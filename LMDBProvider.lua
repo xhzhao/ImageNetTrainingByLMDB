@@ -57,7 +57,7 @@ function ExtractFromLMDBTrain(data, key, config, i , batchData, batchLabel)
     if hflip then
         img = image.hflip(img)
     end
---    torch.setnumthreads(2)
+    torch.setnumthreads(2)
     batchData[i] = img
 
 --    print("ExtractFromLMDBTrain end")
@@ -75,7 +75,7 @@ function ExtractFromLMDBTrainBatch(data, key, config, startIndex, batchData, bat
         batchLabel[i+startIndex] = config.ImageNetClasses.Wnid2ClassNum[wnid]
     end
 --    print("ExtractFromLMDBTrain 2")
---    torch.setnumthreads(2)
+    torch.setnumthreads(2)
     local imageBatch = {}
     for i = 1, config.batchSize do
         local img = data[i].Data
@@ -86,7 +86,7 @@ function ExtractFromLMDBTrainBatch(data, key, config, startIndex, batchData, bat
 
 --    print("ExtractFromLMDBTrain 3")
     
---    torch.setnumthreads(2)
+    torch.setnumthreads(2)
     for i = 1, config.batchSize do
         local startX = math.random(imageBatch[i]:size(3)-config.croppedSize[3]+1)
         local startY = math.random(imageBatch[i]:size(2)-config.croppedSize[2]+1)
@@ -97,7 +97,7 @@ function ExtractFromLMDBTrainBatch(data, key, config, startIndex, batchData, bat
         end
     end
 
---    torch.setnumthreads(2)
+    torch.setnumthreads(2)
     for i = 1, config.batchSize do
         batchData[i+startIndex] = imageBatch[i]
     end
@@ -106,23 +106,37 @@ function ExtractFromLMDBTrainBatch(data, key, config, startIndex, batchData, bat
    -- return img, class
 end
 
-function ExtractFromLMDBTest(data, key, config)
+function ExtractFromLMDBTest(data, key, config, startIndex, batchData, batchLabel)
     require 'image'
-    local wnid = string.split(data.Name,'_')[1]
-    local class = config.ImageNetClasses.Wnid2ClassNum[wnid]
-    local img = data.Data
-    if config.Compressed then
-        img = image.decompressJPG(img,3,'byte')
+    for i = 1, config.batchSize do
+        local wnid = string.split(data[i].Name,'_')[1]
+        batchLabel[i+startIndex] = config.ImageNetClasses.Wnid2ClassNum[wnid]
+    end
+    torch.setnumthreads(2)
+    local imageBatch = {}
+    for i = 1, config.batchSize do
+        local img = data[i].Data
+        if config.Compressed then
+            imageBatch[i] = image.decompressJPG(img,3,'byte')
+        end
     end
 
-    if (math.min(img:size(2), img:size(3)) ~= config.ImageMinSide) then
-        img = image.scale(img, '^' .. config.ImageMinSide)
+    torch.setnumthreads(2)
+    for i = 1, config.batchSize do
+        local startX = math.ceil((imageBatch[i]:size(3)-config.croppedSize[2]+1)/2)
+    	local startY = math.ceil((imageBatch[i]:size(2)-config.croppedSize[2]+1)/2)
+        imageBatch[i] = imageBatch[i]:narrow(3,startX,config.croppedSize[3]):narrow(2,startY,config.croppedSize[2])
+        local hflip = torch.random(1)==1
+        if hflip then
+            imageBatch[i] = image.hflip(imageBatch[i])
+        end
     end
 
-    local startX = math.ceil((img:size(3)-config.InputSize[3]+1)/2)
-    local startY = math.ceil((img:size(2)-config.InputSize[2]+1)/2)
-    img = img:narrow(3,startX,config.InputSize[3]):narrow(2,startY,config.InputSize[2])
-    return img, class
+    torch.setnumthreads(2)
+    for i = 1, config.batchSize do
+        batchData[i+startIndex] = imageBatch[i]
+    end
+
 end
 
 
@@ -132,7 +146,7 @@ end
 
 
 function LMDBProvider:__init(config)
-    assert(config.phase == 'train' or config.phase == 'test')
+    assert(config.phase == 'train' or config.phase == 'val')
 
     dataWholePath = config.dataPath .. config.phase
     self.Source = lmdb.env({Path = dataWholePath, RDONLY = true})
