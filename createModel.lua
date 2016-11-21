@@ -1,7 +1,7 @@
 local paths = require 'paths'
 local optim = require 'optim'
 local net_optm = torch.class('netOptim')
-
+--require 'threads'
 function net_optm:__init(config)
 -- network
     network = self:createNetwork(config)
@@ -189,7 +189,6 @@ function net_optm:trainBatch(inputsCPU, labelsCPU)
 --use every batch    
 --    inputs:resize(inputsCPU:size()):copy(inputsCPU)
 --    labels:resize(labelsCPU:size()):copy(labelsCPU)
-    --print('----------------------------------------------------------')
 
     local inputs = inputsCPU
     local labels = labelsCPU
@@ -199,9 +198,10 @@ function net_optm:trainBatch(inputsCPU, labelsCPU)
     criterion = self.criterion
     parameters = self.parameters
     gradParameters = self.gradParameters
-    
+
 
     feval = function(x)
+--        torch.setnumthreads(42) 
         model:zeroGradParameters()
         outputs = model:forward(inputs)
         local model_outputs = outputs:sub(1, -1, 1, nClasses)
@@ -225,6 +225,7 @@ function net_optm:trainBatch(inputsCPU, labelsCPU)
             end
             gradOutputs = allGradOutputs
         end
+
         model:backward(inputs, gradOutputs)
         return totalerr, gradParameters
     end
