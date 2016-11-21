@@ -63,7 +63,7 @@ dataConfig = {
     epochs          = cmd.nEpochs, 
     epochSize       = cmd.epochSize
 }
-
+--print(dataConfig)
 --****************************************************--
 
 --------------------------------------------------------
@@ -111,6 +111,7 @@ modelConfig = {
     prefetchSize    = config.prefetchSize,
     optimState      = config.optimState
 }
+print(modelConfig)
 --****************************************************--
 
 --------------------------------------------------------
@@ -118,7 +119,8 @@ modelConfig = {
 -----------------------------------------------------
 paths.dofile('LMDBProvider.lua')
 TrainDB = LMDBProvider(dataConfig)
-
+dataConfig.phase='val'
+TestDB = LMDBProvider(dataConfig)
 --****************************************************--
 
 --------------------------------------------------------
@@ -126,6 +128,7 @@ TrainDB = LMDBProvider(dataConfig)
 -----------------------------------------------------
 paths.dofile('createModel.lua')
 TrainModel = netOptim(modelConfig)
+print(TrainModel.network)
 print("create model done")
 --****************************************************--
 
@@ -133,34 +136,38 @@ print("create model done")
 --------------------------------------------------------
 -- 7. read producer
 -----------------------------------------------------
-producer = function(DB, DataTensor, LabelTensor, BQInfo, coroutineInfo)
+producer = function(TrainDB, TestDB, DataTensor, LabelTensor, BQInfo, coroutineInfo)
 
     print('produce haha')    
-
-    DB:open()
     local threads = require 'threads'
     local mutex = threads.Mutex()
     local conditionS = threads.Condition(coroutineInfo[1])
     local conditionF = threads.Condition(coroutineInfo[2])
 
-
-
     torch.setdefaulttensortype('torch.FloatTensor')
-
+    local DB = TrainDB
     local epochs = DB.config.epochs
     local batchsize = DB.config.batchSize
     local epochsize = DB.config.epochSize
     local itemNum = batchsize*epochsize
-    mutex:lock()
-    torch.setnumthreads(2)
     for i = 1, epochs do
+	
+    	DB:open()
         DB:shuffle(itemNum)
-        for j = 1, epochsize do
-
---	    local t1 = sys.clock()
+	fReadLMDBAndPushData = function(bTrain)
+	local maxIteration = 0
+	if bTrain then
+		maxIteration = epochsize
+		print("train data loadding... , maxIteration = ", maxIteration)
+	else
+		maxIteration = 5000/batchsize
+		print("test data loadding... , maxIteration = ", maxIteration)
+	end
+        for j = 1, maxIteration do
+	    local t1 = sys.clock()
 --	    local t3 = nil
             -- Buffer queue should not be modified if we havn't make sure this operation is secure
-
+            mutex:lock()
 --            print(BQInfo)
 	    local converValue = BQInfo[3]*DB.config.prefetchSize
             local storeRunner =  BQInfo[1] + converValue
@@ -168,14 +175,14 @@ producer = function(DB, DataTensor, LabelTensor, BQInfo, coroutineInfo)
 --            print('store', headDis) 
 	    if (headDis < 0) then
                 print('Fatal Error, storeRunner fell behind fetchRunner ')
---		mutex:unlock()
+		mutex:unlock()
             elseif(headDis > DB.config.prefetchSize) then
                 print('Fatal Error, storeRunner has led ahead fetchRunner a whole circle')
--- 		mutex:unlock()
+ 		mutex:unlock()
             elseif(headDis == DB.config.prefetchSize) then
-                print('Warning, waiting for fetch data')
+                --print('Warning, waiting for fetch data')
 		conditionF:wait(mutex)
---	        t1 = sys.clock()
+	        t1 = sys.clock()
                 torch.setnumthreads(2)
                 DB:cacheSeqBatch(j, epochsize, BQInfo[1]-1, DataTensor, LabelTensor)
 --                t3 = sys.clock()
@@ -186,11 +193,11 @@ producer = function(DB, DataTensor, LabelTensor, BQInfo, coroutineInfo)
                     BQInfo[1] = BQInfo[1] + 1
                 end
 
---                mutex:unlock()
+                mutex:unlock()
                 conditionS:signal()
                 
             else
---	        t1 = sys.clock()
+	        t1 = sys.clock()
                 torch.setnumthreads(2)
 	        DB:cacheSeqBatch(j, epochsize, BQInfo[1]-1, DataTensor, LabelTensor)
 --                t3 = sys.clock()
@@ -201,16 +208,25 @@ producer = function(DB, DataTensor, LabelTensor, BQInfo, coroutineInfo)
                     BQInfo[1] = BQInfo[1] + 1
                 end
 
-                --mutex:unlock()
+                mutex:unlock()
                 conditionS:signal()
 	    end
---            local t2 = sys.clock()
---	    print('cacheData', t2-t1) --, 'pure read', t3-t1)
+            local t2 = sys.clock()
+	    --print('cacheData', t2-t1) --, 'pure read', t3-t1)
 --            printer('producer', __threadid, i, j)
-        end
-    end
-    mutex:unlock()
-    DB:close()
+        end --end of epochsize
+	end --end 0f fReadLMDBAndPushData
+	fReadLMDBAndPushData(true)
+    	DB:close()
+	DB = TestDB
+	DB:open()
+	fReadLMDBAndPushData(false)
+    	DB:close()
+	--start to load test data with the same batchsize
+
+
+    end --end of epochs
+
     
 
 end
@@ -225,7 +241,6 @@ consumer = function(model, DataTensor, LabelTensor, BQInfo, coroutineInfo)
     print('consume haha')
 
     local threads = require 'threads'
-    local sys = require 'sys'
     local mutex = threads.Mutex() 
     local conditionS = threads.Condition(coroutineInfo[1])
     local conditionF = threads.Condition(coroutineInfo[2])
@@ -242,100 +257,12 @@ consumer = function(model, DataTensor, LabelTensor, BQInfo, coroutineInfo)
     local lastTick = nil
     local interval = nil
     local totalerr = nil
-    local fullFlag = false
-    mutex:lock()
-    torch.setnumthreads(42)
     for i =1, epochs do
-        model:setTrainOptim(i)
-	model.network:training()
-        for j =1, epochSize do
-
-            if(j%100 == 0) then
-               curTick = sys.clock() 
-               if(lastTick ~= nil) then
-                  interval = curTick - lastTick
-               end
-               lastTick = curTick
-               print('train 100 batch time = ', __threadid, j,  interval, ' sec')
-            end
-            
-            local t1 = sys.clock()
-            local t2 = nil
-   --         mutex:lock()
-
-            local converValue = BQInfo[3]*model.config.prefetchSize
-            local storeRunner =  BQInfo[1] + converValue
-            local headDis = storeRunner - BQInfo[2]
- 
-  	    if(headDis == model.config.prefetchSize) then
-                fullFlag = true
-            end
-            if(headDis > model.config.prefetchSize) then
-                print('Fatal Error, storeRunner has led ahead fetchRunner a whole circle')
---                mutex:unlock()
-            elseif(headDis < 0) then
-                print('Fatal Error, storeRunner has fell behind fetchRunner')
---                mutex:unlock()
-            elseif(headDis == 0) then
-                --print('Warning, waiting for store data')
-                fullFlag = false
-                conditionS:wait(mutex)
-                local index = BQInfo[2]-1
-                batchData = DataTensor[{{index*batchSize+1, (index+1)*batchSize}, {}, {}, {}}]
-                batchLabel = LabelTensor[{{index*batchSize+1, (index+1)*batchSize}}]
-                
-
-                t2 = sys.clock()
-                torch.setnumthreads(42)
-                totalerr = model:trainBatch(batchData, batchLabel)
-                torch.setnumthreads(1)
-                if(BQInfo[2] == model.config.prefetchSize) then
-                    BQInfo[2] = 1
-                    BQInfo[3] = 0
-                else
-                    BQInfo[2] = BQInfo[2] + 1
-                end
---                mutex:unlock()
-                conditionF:signal()
-             else
-                local index = BQInfo[2]-1
-         
-                batchData = DataTensor[{{index*batchSize+1, (index+1)*batchSize}, {}, {}, {}}]
-                batchLabel = LabelTensor[{{index*batchSize+1, (index+1)*batchSize}}]
-	        t2 = sys.clock()
-
-                if( fullFlag) then
-                    torch.setnumthreads(44)
-                else
-                    torch.setnumthreads(42)
-                end
-                totalerr = model:trainBatch(batchData, batchLabel)
-                torch.setnumthreads(1)
-                if(BQInfo[2] == model.config.prefetchSize) then
-                    BQInfo[2] = 1
-                    BQInfo[3] = 0
-                else
-                    BQInfo[2] = BQInfo[2] + 1
-                end
-
-             end
-
-             if( (headDis > 0) and (headDis < 3)) then
-                    fullFlag = false
-                    conditionF:signal()
-             end
-             local t3 = sys.clock()
-             print("epoch=",i,",iteration =",j ,", LR = ", model.optimState.learningRate,", loss = ", totalerr, 'fetchdata', t2-t1, 'traindata', t3-t2)
-          
-            --    mutex:unlock()
-        end
---        model:clearState()
---        saveDataParallel(paths.concat(opt.save, 'model_' .. epoch .. '.t7'), model) -- defined in util.lua
---        torch.save(paths.concat(opt.save, 'optimState_' .. epoch .. '.t7'), optimState)
+	model:TrainOneEpoch(i, model, DataTensor, LabelTensor, BQInfo, coroutineInfo)
+	model:TestModel(i,model, DataTensor, LabelTensor, BQInfo, coroutineInfo)
 
     end
 
-    mutex:unlock()
 end
 
 --***************************************************--
@@ -376,7 +303,7 @@ coroutineInfo = torch.LongTensor({storeConditionID, fetchConditionID})
 --create blocks
 producer_block = tunnel.Block(1, init_job)
 consumer_block = tunnel.Block(1, init_job)
-producer_block:add(TrainDB, DataBufferTensor, LabelBufferTensor, BQInfo, coroutineInfo)
+producer_block:add(TrainDB, TestDB, DataBufferTensor, LabelBufferTensor, BQInfo, coroutineInfo)
 consumer_block:add(TrainModel, DataBufferTensor, LabelBufferTensor, BQInfo, coroutineInfo)
 -- run threads
 producer_block:run(producer)
