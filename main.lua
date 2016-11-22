@@ -152,15 +152,14 @@ producer = function(TrainDB, TestDB, DataTensor, LabelTensor, BQInfo, coroutineI
     local itemNum = batchsize*epochsize
     for i = 1, epochs do
 	
-    	DB:open()
-        DB:shuffle(itemNum)
+
 	fReadLMDBAndPushData = function(bTrain)
 	local maxIteration = 0
 	if bTrain then
 		maxIteration = epochsize
 		print("train data loadding... , maxIteration = ", maxIteration)
 	else
-		maxIteration = 5000/batchsize
+		maxIteration = 50000/batchsize
 		print("test data loadding... , maxIteration = ", maxIteration)
 	end
         for j = 1, maxIteration do
@@ -216,6 +215,9 @@ producer = function(TrainDB, TestDB, DataTensor, LabelTensor, BQInfo, coroutineI
 --            printer('producer', __threadid, i, j)
         end --end of epochsize
 	end --end 0f fReadLMDBAndPushData
+	DB = TrainDB
+    	DB:open()
+        DB:shuffle(itemNum)
 	fReadLMDBAndPushData(true)
     	DB:close()
 	DB = TestDB
