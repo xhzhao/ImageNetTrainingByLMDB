@@ -57,6 +57,7 @@ function ExtractFromLMDBTrain(data, key, config, i , batchData, batchLabel)
     if hflip then
         img = image.hflip(img)
     end
+    
     torch.setnumthreads(2)
     batchData[i] = img
 
@@ -93,8 +94,9 @@ function ExtractFromLMDBTrainBatch(data, key, config, startIndex, batchData, bat
         imageBatch[i] = imageBatch[i]:narrow(3,startX,config.croppedSize[3]):narrow(2,startY,config.croppedSize[2])
         local hflip = torch.random(1)==1
         if hflip then
-            imageBatch[i] = image.hflip(imageBatch[i])
+            imageBatch[i] = image.hflip(imageBatch[i]):type('torch.FloatTensor')
         end
+	imageBatch[i]:add(-config.Normalization[2])
     end
 
     torch.setnumthreads(2)
@@ -128,8 +130,9 @@ function ExtractFromLMDBTest(data, key, config, startIndex, batchData, batchLabe
         imageBatch[i] = imageBatch[i]:narrow(3,startX,config.croppedSize[3]):narrow(2,startY,config.croppedSize[2])
         local hflip = torch.random(1)==1
         if hflip then
-            imageBatch[i] = image.hflip(imageBatch[i])
+            imageBatch[i] = image.hflip(imageBatch[i]):type('torch.FloatTensor')
         end
+	imageBatch[i]:add(-config.Normalization[2])
     end
 
     torch.setnumthreads(2)

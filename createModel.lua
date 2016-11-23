@@ -216,7 +216,7 @@ function net_optm:trainBatch(inputsCPU, labelsCPU)
 end
 
 
---local top1_center, top5_center, loss
+local top1_center, top5_center, loss
 function net_optm:testBatch(inputsCPU, labelsCPU)
 
     local inputs = inputsCPU
@@ -423,7 +423,7 @@ function net_optm:TestModel(epoch, model, DataTensor, LabelTensor, BQInfo, corou
    top5_center = top5_center * 100 / nTest
    loss = loss / (nTest/batchSize) -- because loss is calculated per batch
    print(string.format('Epoch: [%d][TESTING SUMMARY] Total Time(s): %.2f \t'
-                          .. 'average loss (per batch): %.2f \t '
+                          .. 'averageLOSS (per batch): %.2f \t '
                           .. 'accuracy [Center](%%):\t top-1 %.2f\t '
                           .. 'accuracy [Center](%%):\t top-5 %.2f\t ',
                        epoch, (totalTestEnd - totalTestStart), loss, top1_center, top5_center))
