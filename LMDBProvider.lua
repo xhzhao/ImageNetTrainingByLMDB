@@ -81,7 +81,7 @@ function ExtractFromLMDBTrainBatch(data, key, config, startIndex, batchData, bat
     for i = 1, config.batchSize do
         local img = data[i].Data
         if config.Compressed then
-            imageBatch[i] = image.decompressJPG(img,3,'byte')
+            imageBatch[i] = image.decompressJPG(img,3,'byte'):type('torch.FloatTensor')
         end
     end
 
@@ -92,9 +92,9 @@ function ExtractFromLMDBTrainBatch(data, key, config, startIndex, batchData, bat
         local startX = math.random(imageBatch[i]:size(3)-config.croppedSize[3]+1)
         local startY = math.random(imageBatch[i]:size(2)-config.croppedSize[2]+1)
         imageBatch[i] = imageBatch[i]:narrow(3,startX,config.croppedSize[3]):narrow(2,startY,config.croppedSize[2])
-        local hflip = torch.random(1)==1
+        local hflip = torch.random(2)==1
         if hflip then
-            imageBatch[i] = image.hflip(imageBatch[i]):type('torch.FloatTensor')
+            imageBatch[i] = image.hflip(imageBatch[i])
         end
 	imageBatch[i]:add(-config.Normalization[2])
     end
@@ -119,7 +119,7 @@ function ExtractFromLMDBTest(data, key, config, startIndex, batchData, batchLabe
     for i = 1, config.batchSize do
         local img = data[i].Data
         if config.Compressed then
-            imageBatch[i] = image.decompressJPG(img,3,'byte')
+            imageBatch[i] = image.decompressJPG(img,3,'byte'):type('torch.FloatTensor')
         end
     end
 
@@ -128,9 +128,9 @@ function ExtractFromLMDBTest(data, key, config, startIndex, batchData, batchLabe
         local startX = math.ceil((imageBatch[i]:size(3)-config.croppedSize[2]+1)/2)
     	local startY = math.ceil((imageBatch[i]:size(2)-config.croppedSize[2]+1)/2)
         imageBatch[i] = imageBatch[i]:narrow(3,startX,config.croppedSize[3]):narrow(2,startY,config.croppedSize[2])
-        local hflip = torch.random(1)==1
+        local hflip = torch.random(2)==1
         if hflip then
-            imageBatch[i] = image.hflip(imageBatch[i]):type('torch.FloatTensor')
+            imageBatch[i] = image.hflip(imageBatch[i])
         end
 	imageBatch[i]:add(-config.Normalization[2])
     end
