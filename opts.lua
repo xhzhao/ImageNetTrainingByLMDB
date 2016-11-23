@@ -9,7 +9,7 @@
 local M = { }
 
 function M.parse(arg)
-    local model = 'googlenet'
+    local model = 'alexnet'
     local cmd = torch.CmdLine()
 
     cmd:text()
@@ -36,7 +36,6 @@ function M.parse(arg)
        cmd:option('-epochSize',            40000,  'Number of batches per epoch')
        cmd:option('-epochNumber',          1,      'Manual epoch number (useful on restarts)')
        cmd:option('-batchSize',             32,    'mini-batch size (1 = pure stochastic)')
-       cmd:option('-prefetchSize',         5,      'prefetch batch size (2 or 3 is recommended)')
        ---------- Optimization options ----------------------
        cmd:option('-optimization',         'sgd',  'optimization method')
        cmd:option('-learningRate',                   0.0,    'learning rate; if set, overrides default LR/WD recipe')
@@ -52,7 +51,6 @@ function M.parse(arg)
        cmd:option('-epochSize',            5000,  'Number of batches per epoch')
        cmd:option('-epochNumber',          1,      'Manual epoch number (useful on restarts)')
        cmd:option('-batchSize',            256,    'mini-batch size (1 = pure stochastic)')
-       cmd:option('-prefetchSize',         4,      'prefetch batch size (2 or 3 is recommended)')
        ---------- Optimization options ----------------------
        cmd:option('-optimization',         'sgd',  'optimization method')
        cmd:option('-learningRate',                   0.0,    'learning rate; if set, overrides default LR/WD recipe')

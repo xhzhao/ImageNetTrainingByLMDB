@@ -81,7 +81,7 @@ function ExtractFromLMDBTrainBatch(data, key, config, startIndex, batchData, bat
     for i = 1, config.batchSize do
         local img = data[i].Data
         if config.Compressed then
-            imageBatch[i] = image.decompressJPG(img,3,'byte'):type('torch.FloatTensor')
+            imageBatch[i] = image.decompressJPG(img,3,'byte')
         end
     end
 
@@ -96,7 +96,6 @@ function ExtractFromLMDBTrainBatch(data, key, config, startIndex, batchData, bat
         if hflip then
             imageBatch[i] = image.hflip(imageBatch[i])
         end
-	imageBatch[i]:add(-config.Normalization[2])
     end
 
     torch.setnumthreads(2)
@@ -119,7 +118,7 @@ function ExtractFromLMDBTest(data, key, config, startIndex, batchData, batchLabe
     for i = 1, config.batchSize do
         local img = data[i].Data
         if config.Compressed then
-            imageBatch[i] = image.decompressJPG(img,3,'byte'):type('torch.FloatTensor')
+            imageBatch[i] = image.decompressJPG(img,3,'byte')
         end
     end
 
@@ -132,7 +131,6 @@ function ExtractFromLMDBTest(data, key, config, startIndex, batchData, batchLabe
         if hflip then
             imageBatch[i] = image.hflip(imageBatch[i])
         end
-	imageBatch[i]:add(-config.Normalization[2])
     end
 
     torch.setnumthreads(2)

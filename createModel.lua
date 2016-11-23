@@ -148,6 +148,7 @@ function net_optm:setTrainOptim(epoch)
                 learningRate = baseLR,
                 learningRateDecay = 0.0,
                 momentum = self.config.momentum,
+                dampening = 0.0,
                 weightDecays = WDs,
                 learningRates = LRs,
             }
