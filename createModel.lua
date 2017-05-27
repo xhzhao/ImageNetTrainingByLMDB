@@ -1,3 +1,4 @@
+require 'mklnn'
 local paths = require 'paths'
 local optim = require 'optim'
 local net_optm = torch.class('netOptim')
