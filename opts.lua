@@ -59,15 +59,6 @@ function M.parse(arg)
        ---------- Model options ----------------------------------
        cmd:option('-netType',              'alexnet_mkldnn', 'Options: alexnet | overfeat | alexnetowtbn | vgg | googlenet')
     end
-
-
-
-
-
-
-
-
-
     cmd:option('-retrain',              'none', 'provide path to model to retrain with')
     cmd:option('-optimState',           'none', 'provide path to an optimState to reload from')
 

@@ -51,6 +51,7 @@ function net_optm:createNetwork(config)
         paths.dofile(config.modelsFolder  .. config.netType .. '.lua')
         print('=> Creating model from file: models/' .. config.netType .. '.lua')
         network = createModel(config.nGPU, config.nClasses) -- for the model creation code, check the models/ folder
+        networkMKL = mklnn.convert(network, 'mkl')
         if config.backend == 'cudnn' then
             require 'cudnn'
             cudnn.convert(network, cudnn)
@@ -59,7 +60,7 @@ function net_optm:createNetwork(config)
        end
     end
 
-    return network
+    return networkMKL
 end
 
 
