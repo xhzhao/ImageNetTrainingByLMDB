@@ -11,14 +11,14 @@ for i=1001,#ImageNetClasses.ClassName do
 end
 
 --dataPath = '/data/user/xiaohui/LMDB2/debug-byte/'
-dataPath = '/root/imagenet/LMDB/'
+dataPath = '/home/sys_dltest/workspace/LMDB/'
 
 config = 
 {
     path = dataPath,
     nClasses = 1000,
     croppedSize = {3, 224, 224},
-    prefetchSize = 6,
+    prefetchSize = 64,
     ImageMinSide = 256, --Minimum side length of saved images
     ValidationLabels = ValidationLabels,
     ImageNetClasses = ImageNetClasses,

@@ -7,6 +7,8 @@ function net_optm:__init(config)
     network = self:createNetwork(config)
     self.network = network:float()
     
+    self.network =  mklnn.convert(self.network, 'mkl')
+
     self.parameters, self.gradParameters = self.network:getParameters()
 -- Criterion
     self.criterion = nn.ClassNLLCriterion()
@@ -171,11 +173,11 @@ function net_optm:trainBatch(inputsCPU, labelsCPU)
     local inputs = inputsCPU
     local labels = labelsCPU
     local err, outputs, totalerr
-    model = self.network
-    nClasses = self.config.nClasses
-    criterion = self.criterion
-    parameters = self.parameters
-    gradParameters = self.gradParameters
+    local model = self.network
+    local nClasses = self.config.nClasses
+    local criterion = self.criterion
+    local parameters = self.parameters
+    local gradParameters = self.gradParameters
 
 
     feval = function(x)
@@ -220,11 +222,11 @@ end
 local top1_center, top5_center, loss
 function net_optm:testBatch(inputsCPU, labelsCPU)
 
-    local inputs = inputsCPU
-    local labels = labelsCPU
-    local err, outputs, totalerr
-    model = self.network
-    criterion = self.criterion
+   local inputs = inputsCPU
+   local labels = labelsCPU
+   local err, outputs, totalerr
+   local model = self.network
+   local criterion = self.criterion
 
    local outputs = model:forward(inputs)
    local err = criterion:forward(outputs, labels)
@@ -242,7 +244,7 @@ function net_optm:testBatch(inputsCPU, labelsCPU)
 
 end
 
-function net_optm:TrainOneEpoch(epoch, model, DataTensor, LabelTensor, BQInfo, coroutineInfo)
+function net_optm:TrainOneEpoch(epoch, DataTensor, LabelTensor, BQInfo, coroutineInfo)
     local threads = require 'threads'
     local sys = require 'sys'
 
@@ -250,9 +252,9 @@ function net_optm:TrainOneEpoch(epoch, model, DataTensor, LabelTensor, BQInfo, c
     local conditionS = threads.Condition(coroutineInfo[1])
     local conditionF = threads.Condition(coroutineInfo[2])
 
-    local epochs = model.config.epochs
-    local batchSize = model.config.batchSize
-    local epochSize = model.config.epochSize
+    local epochs = self.config.epochs
+    local batchSize = self.config.batchSize
+    local epochSize = self.config.epochSize
             
     local batchData 
     local batchLabel 
@@ -260,86 +262,105 @@ function net_optm:TrainOneEpoch(epoch, model, DataTensor, LabelTensor, BQInfo, c
     local lastTick = nil
     local interval = nil
     local totalerr = nil
+    local fullFlag =  false
 
-    model:setTrainOptim(epoch)
-    model.network:training()
-        for j =1, epochSize do
-
-            if(j%100 == 0) then
-               curTick = sys.clock() 
-               if(lastTick ~= nil) then
-                  interval = curTick - lastTick
-               end
-               lastTick = curTick
-               print('train 100 batch time = ', __threadid, j,  interval, ' sec')
-            end
-            
-            local t1 = sys.clock()
-            local t2 = nil
-            mutex:lock()
-
-            local converValue = BQInfo[3]*model.config.prefetchSize
-            local storeRunner =  BQInfo[1] + converValue
-            local headDis = storeRunner - BQInfo[2]
-            if(headDis > model.config.prefetchSize) then
-                print('Fatal Error, storeRunner has led ahead fetchRunner a whole circle')
-                mutex:unlock()
-            elseif(headDis < 0) then
-                print('Fatal Error, storeRunner has fell behind fetchRunner')
-                mutex:unlock()
-            elseif(headDis == 0) then
-                --print('Warning, waiting for store data')
-                conditionS:wait(mutex)
-                local index = BQInfo[2]-1
-                batchData = DataTensor[{{index*batchSize+1, (index+1)*batchSize}, {}, {}, {}}]
-                batchLabel = LabelTensor[{{index*batchSize+1, (index+1)*batchSize}}]
-                
-                t2 = sys.clock()
-                torch.setnumthreads(42)
-                totalerr = model:trainBatch(batchData, batchLabel)
-                torch.setnumthreads(1)
-                if(BQInfo[2] == model.config.prefetchSize) then
-                    BQInfo[2] = 1
-                    BQInfo[3] = 0
-                else
-                    BQInfo[2] = BQInfo[2] + 1
-                end
-                mutex:unlock()
-                conditionF:signal()
- 
-             else
-                local index = BQInfo[2]-1
-         
-                batchData = DataTensor[{{index*batchSize+1, (index+1)*batchSize}, {}, {}, {}}]
-                batchLabel = LabelTensor[{{index*batchSize+1, (index+1)*batchSize}}]
-	        t2 = sys.clock()
-                torch.setnumthreads(42)
-                totalerr = model:trainBatch(batchData, batchLabel)
-                torch.setnumthreads(1)
-                if(BQInfo[2] == model.config.prefetchSize) then
-                    BQInfo[2] = 1
-                    BQInfo[3] = 0
-                else
-                    BQInfo[2] = BQInfo[2] + 1
-                end
-                mutex:unlock()
-                conditionF:signal()
-             end 
-             local t3 = sys.clock()
-
-             print("epoch=",epoch,",iteration =",j ,", LR = ", model.optimState.learningRate,", loss = ", totalerr, 'fetchdata', t2-t1, 'traindata', t3-t2)
-
-            --    mutex:unlock()
+    self:setTrainOptim(epoch)
+    self.network:training()
+    --mutex:lock()
+    for j =1, epochSize do
+        --print("trainOneEpoch j = ", j)
+        if(j%100 == 0) then
+           curTick = sys.clock() 
+           if(lastTick ~= nil) then
+              interval = curTick - lastTick
+           end
+           lastTick = curTick
+           print('train 100 batch time = ', __threadid, j,  interval, ' sec')
         end
---        model:clearState()
---        saveDataParallel(paths.concat(opt.save, 'model_' .. epoch .. '.t7'), model) -- defined in util.lua
+        
+        local t1 = sys.clock()
+        local t2 = nil
+        --print("trainOneEpoch lock")
+
+
+        local converValue = BQInfo[3]*self.config.prefetchSize
+        local storeRunner =  BQInfo[1] + converValue
+        local headDis = storeRunner - BQInfo[2]
+        if (headDis == self.config.prefetchSize) then
+            fullFlag= true
+        end
+   
+        mutex:lock()
+        if(headDis > self.config.prefetchSize) then
+            print('Fatal Error, storeRunner has led ahead fetchRunner a whole circle')
+            mutex:unlock()
+        elseif(headDis < 0) then
+            print('Fatal Error, storeRunner has fell behind fetchRunner')
+            mutex:unlock()
+        elseif(headDis == 0) then
+            print('Warning, waiting for store data')
+            fullFlag = false
+            conditionS:wait(mutex)
+            --print('start to fetch data')
+            local index = BQInfo[2]-1
+            batchData = DataTensor[{{index*batchSize+1, (index+1)*batchSize}, {}, {}, {}}]
+            batchLabel = LabelTensor[{{index*batchSize+1, (index+1)*batchSize}}]
+            
+            t2 = sys.clock()
+            torch.setnumthreads(42)
+            totalerr = self:trainBatch(batchData, batchLabel)
+            torch.setnumthreads(1)
+            if(BQInfo[2] == self.config.prefetchSize) then
+                BQInfo[2] = 1
+                BQInfo[3] = 0
+            else
+                BQInfo[2] = BQInfo[2] + 1
+            end
+            mutex:unlock()
+            conditionF:signal()
+ 
+         else
+            print('fetching data')
+            local index = BQInfo[2]-1
+     
+            batchData = DataTensor[{{index*batchSize+1, (index+1)*batchSize}, {}, {}, {}}]
+            batchLabel = LabelTensor[{{index*batchSize+1, (index+1)*batchSize}}]
+             t2 = sys.clock()
+            if(fullFlag) then
+               torch.setnumthreads(44)
+            else
+               torch.setnumthreads(42)
+            end
+            totalerr = self:trainBatch(batchData, batchLabel)
+            torch.setnumthreads(1)
+            if(BQInfo[2] == self.config.prefetchSize) then
+                BQInfo[2] = 1
+                BQInfo[3] = 0
+            else
+                BQInfo[2] = BQInfo[2] + 1
+            end
+            if ((headDis > 0) and (headDis < 3)) then
+                print('notify to store data')
+                fullFlag = false
+                conditionF:signal()
+            end
+            mutex:unlock()
+         end 
+         local t3 = sys.clock()
+
+         print("epoch=", epoch,",iteration =",j ,", LR = ", self.optimState.learningRate,", loss = ", totalerr, 'fetchdata', t2-t1, 'traindata', t3-t2)
+
+    end
+    --mutex:unlock()
+--        self:clearState()
+--        saveDataParallel(paths.concat(opt.save, 'model_' .. epoch .. '.t7'), self) -- defined in util.lua
 --        torch.save(paths.concat(opt.save, 'optimState_' .. epoch .. '.t7'), optimState)
 
 
 end
 
 
-function net_optm:TestModel(epoch, model, DataTensor, LabelTensor, BQInfo, coroutineInfo)
+function net_optm:TestModel(epoch, DataTensor, LabelTensor, BQInfo, coroutineInfo)
     local threads = require 'threads'
     local sys = require 'sys'
     local mutex = threads.Mutex() 
@@ -347,7 +368,7 @@ function net_optm:TestModel(epoch, model, DataTensor, LabelTensor, BQInfo, corou
     local conditionF = threads.Condition(coroutineInfo[2])
 
 
-    local batchSize = model.config.batchSize
+    local batchSize = self.config.batchSize
     local batchData 
     local batchLabel 
 
@@ -357,9 +378,9 @@ function net_optm:TestModel(epoch, model, DataTensor, LabelTensor, BQInfo, corou
     loss = 0
     local nTest = 50000 --test image db size
     print("testing start, nTest = ",nTest, ", batchSize = ",batchSize)
-    model.network:evaluate()
+    self.network:evaluate()
 
-        for j =1, nTest/batchSize do
+     for j =1, nTest/batchSize do
             if(j%100 == 0) then
                curTick = sys.clock() 
                if(lastTick ~= nil) then
@@ -371,10 +392,10 @@ function net_optm:TestModel(epoch, model, DataTensor, LabelTensor, BQInfo, corou
             
             mutex:lock()
 
-            local converValue = BQInfo[3]*model.config.prefetchSize
+            local converValue = BQInfo[3]*self.config.prefetchSize
             local storeRunner =  BQInfo[1] + converValue
             local headDis = storeRunner - BQInfo[2]
-            if(headDis > model.config.prefetchSize) then
+            if(headDis > self.config.prefetchSize) then
                 print('Fatal Error, storeRunner has led ahead fetchRunner a whole circle')
                 mutex:unlock()
             elseif(headDis < 0) then
@@ -388,9 +409,9 @@ function net_optm:TestModel(epoch, model, DataTensor, LabelTensor, BQInfo, corou
                 batchLabel = LabelTensor[{{index*batchSize+1, (index+1)*batchSize}}]
                 
                 torch.setnumthreads(42)
-                model:testBatch(batchData, batchLabel)
+                self:testBatch(batchData, batchLabel)
                 torch.setnumthreads(1)
-                if(BQInfo[2] == model.config.prefetchSize) then
+                if(BQInfo[2] == self.config.prefetchSize) then
                     BQInfo[2] = 1
                     BQInfo[3] = 0
                 else
@@ -405,9 +426,9 @@ function net_optm:TestModel(epoch, model, DataTensor, LabelTensor, BQInfo, corou
                 batchData = DataTensor[{{index*batchSize+1, (index+1)*batchSize}, {}, {}, {}}]
                 batchLabel = LabelTensor[{{index*batchSize+1, (index+1)*batchSize}}]
                 torch.setnumthreads(42)
-                model:testBatch(batchData, batchLabel)
+                self:testBatch(batchData, batchLabel)
                 torch.setnumthreads(1)
-                if(BQInfo[2] == model.config.prefetchSize) then
+                if(BQInfo[2] == self.config.prefetchSize) then
                     BQInfo[2] = 1
                     BQInfo[3] = 0
                 else
@@ -416,7 +437,7 @@ function net_optm:TestModel(epoch, model, DataTensor, LabelTensor, BQInfo, corou
                 mutex:unlock()
                 conditionF:signal()
              end
-	print("test index = ", j)
+             print("test index = ", j)
         end
 
    local totalTestEnd = sys.clock()

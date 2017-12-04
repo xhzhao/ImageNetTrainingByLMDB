@@ -1,4 +1,5 @@
 require 'nn'
+require 'mklnn'
 require 'nnlr'
 
 
@@ -7,11 +8,11 @@ function createModel(nGPU)
    -- this is AlexNet that was presented in the One Weird Trick paper. http://arxiv.org/abs/1404.5997
    local features = nn.Sequential()
 
-   local SpatialConvolution = nn.SpatialConvolutionMKLDNN
-   local ReLU = nn.ReLUMKLDNN
-   local SpatialMaxPooling = nn.SpatialMaxPoolingMKLDNN
-   local SBatchNorm = nn.SpatialBatchNormalizationMKLDNN
-   local LRN = nn.LRNMKLDNN
+   local SpatialConvolution = nn.SpatialConvolution
+   local ReLU = nn.ReLU
+   local SpatialMaxPooling = nn.SpatialMaxPooling
+   local SBatchNorm = nn.SpatialBatchNormalization
+   local LRN = nn.SpatialCrossMapLRN
 
    local conv1 = SpatialConvolution(3,96,11,11,4,4)
    conv1:learningRate('weight', 1)

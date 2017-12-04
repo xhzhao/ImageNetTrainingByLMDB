@@ -1,4 +1,6 @@
+require 'mklnn'
 local paths = require 'paths'
+--local tunnel = require '../tunnel/tunnel'
 local tunnel = require 'tunnel'
 local lmdb = require 'lmdb' 
 require 'nnlr'
@@ -154,52 +156,55 @@ producer = function(TrainDB, TestDB, DataTensor, LabelTensor, BQInfo, coroutineI
 	
 
 	fReadLMDBAndPushData = function(bTrain)
-	local maxIteration = 0
-	if bTrain then
-		maxIteration = epochsize
-		print("train data loadding... , maxIteration = ", maxIteration)
-	else
-		maxIteration = 50000/batchsize
-		print("test data loadding... , maxIteration = ", maxIteration)
-	end
+	    local maxIteration = 0
+	    if bTrain then
+	    	maxIteration = epochsize
+	    	print("train data loadding... , maxIteration = ", maxIteration)
+	    else
+	    	maxIteration = 500/batchsize
+	    	print("test data loadding... , maxIteration = ", maxIteration)
+	    end
+
         for j = 1, maxIteration do
-	    local t1 = sys.clock()
---	    local t3 = nil
+	        local t1 = sys.clock()
+--	        local t3 = nil
             -- Buffer queue should not be modified if we havn't make sure this operation is secure
+
+            --print(BQInfo)--
             mutex:lock()
---            print(BQInfo)
-	    local converValue = BQInfo[3]*DB.config.prefetchSize
-            local storeRunner =  BQInfo[1] + converValue
-            local headDis = storeRunner - BQInfo[2]
---            print('store', headDis) 
-	    if (headDis < 0) then
+	        local converValue = BQInfo[3]*DB.config.prefetchSize
+                local storeRunner =  BQInfo[1] + converValue
+                local headDis = storeRunner - BQInfo[2]
+	        if (headDis < 0) then
                 print('Fatal Error, storeRunner fell behind fetchRunner ')
-		mutex:unlock()
+	            mutex:unlock()
             elseif(headDis > DB.config.prefetchSize) then
                 print('Fatal Error, storeRunner has led ahead fetchRunner a whole circle')
- 		mutex:unlock()
+ 	            mutex:unlock()
             elseif(headDis == DB.config.prefetchSize) then
-                --print('Warning, waiting for fetch data')
-		conditionF:wait(mutex)
-	        t1 = sys.clock()
+                print('Warning, waiting for fetch data') 
+	            conditionF:wait(mutex)
+                print('start to store data!!')
+	            t1 = sys.clock()
+                --threads for fetching pictures
                 torch.setnumthreads(2)
                 DB:cacheSeqBatch(j, epochsize, BQInfo[1]-1, DataTensor, LabelTensor)
---                t3 = sys.clock()
+--              t3 = sys.clock()
                 if(BQInfo[1] == DB.config.prefetchSize) then
                     BQInfo[1] = 1
                     BQInfo[3] = 1
                 else
                     BQInfo[1] = BQInfo[1] + 1
                 end
-
                 mutex:unlock()
                 conditionS:signal()
-                
+                    
             else
-	        t1 = sys.clock()
+            --  print('storing data!!')
+	            t1 = sys.clock()
                 torch.setnumthreads(2)
-	        DB:cacheSeqBatch(j, epochsize, BQInfo[1]-1, DataTensor, LabelTensor)
---                t3 = sys.clock()
+	            DB:cacheSeqBatch(j, epochsize, BQInfo[1]-1, DataTensor, LabelTensor)
+--              t3 = sys.clock()
                 if(BQInfo[1] == DB.config.prefetchSize) then
                     BQInfo[1] = 1
                     BQInfo[3] = 1
@@ -207,30 +212,25 @@ producer = function(TrainDB, TestDB, DataTensor, LabelTensor, BQInfo, coroutineI
                     BQInfo[1] = BQInfo[1] + 1
                 end
 
-                mutex:unlock()
                 conditionS:signal()
-	    end
+                mutex:unlock()
+	        end
             local t2 = sys.clock()
-	    --print('cacheData', t2-t1) --, 'pure read', t3-t1)
---            printer('producer', __threadid, i, j)
+	        --print('cacheData', t2-t1) --, 'pure read', t3-t1)
         end --end of epochsize
+        --mutex:unlock()
 	end --end 0f fReadLMDBAndPushData
-	DB = TrainDB
-    	DB:open()
-        DB:shuffle(itemNum)
-	fReadLMDBAndPushData(true)
-    	DB:close()
-	DB = TestDB
-	DB:open()
-	fReadLMDBAndPushData(false)
-    	DB:close()
+    DB = TrainDB
+    DB:open()
+    DB:shuffle(itemNum)
+    fReadLMDBAndPushData(true)
+    DB:close()
+    DB = TestDB
+    DB:open()
+    fReadLMDBAndPushData(false)
+   	DB:close()
 	--start to load test data with the same batchsize
-
-
     end --end of epochs
-
-    
-
 end
 
 --****************************************************--
@@ -260,8 +260,8 @@ consumer = function(model, DataTensor, LabelTensor, BQInfo, coroutineInfo)
     local interval = nil
     local totalerr = nil
     for i =1, epochs do
-	model:TrainOneEpoch(i, model, DataTensor, LabelTensor, BQInfo, coroutineInfo)
-	model:TestModel(i,model, DataTensor, LabelTensor, BQInfo, coroutineInfo)
+	  model:TrainOneEpoch(i, DataTensor, LabelTensor, BQInfo, coroutineInfo)
+	  model:TestModel(i, DataTensor, LabelTensor, BQInfo, coroutineInfo)
 
     end
 
@@ -280,13 +280,33 @@ init_job = function()
     path.dofile('createModel.lua')
     require 'nnlr'
     require 'tunnel' 
+    require 'mklnn' 
 
 end
 --***************************************************--
 
 ---------------------------------------------------------------
 -- 10. create variables shared by producer and consumer threads
+--[[for i=1, 100000 do
+dummy_data = torch.rand(32, 3, 227, 227)
+--e_hot = torch.zeros(64, 1000)
+rand_perm = torch.randperm(32)
+--print(rand_perm)
+--one_hot:scatter(2, rand_perm, 1)
+--print(rand_perm)
+--rand_perm = rand_perm:transpose(1,2)
+--print(rand_perm)
+--data_64x1000 = torch.random(64, 1000)
+--dummy_label = rand_perm:expand(64, 1000) --torch.random(64, 1000)
+--dummy_output = TrainModel.network:forward(dummy_data)
+TrainModel:trainBatch(dummy_data, rand_perm)
+--dummy_gradInput = TrainModel.network:backward(dummy_data, dummy_label)
 
+--dummy_mkl_gradInput = TrainModel.network:backward(dummy_data, dummy_label)
+--print("forward", dummy_output -dummy_mkl_output)
+--print("backward", dummy_gradInput - dummy_mkl_gradInput)
+end
+]]--
 vector = tunnel.Vector(dataConfig.prefetchSize)
 --printer = tunnel.Printer()
 

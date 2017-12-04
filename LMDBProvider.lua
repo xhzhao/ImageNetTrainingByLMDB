@@ -191,14 +191,11 @@ function LMDBProvider:cacheSeqBatch(pos, itemNum, index, batchData, batchLabel)
     for i = 1, config.batchSize do
     --    local t1 = sys.clock()
          key, data[i] = self.cursor:get()
+         self.cursor:next()
     --    local t2 = sys.clock()
 
     --    local t3 = sys.clock()
-        if (pos < itemNum) then
-            self.cursor:next()
-        elseif(pos == itemNum) then
-            self.cursor:first()
-        end
+
 
       --[[  local t4 = sys.clock()
         tt1 = tt1 + (t2-t1)
@@ -209,6 +206,10 @@ function LMDBProvider:cacheSeqBatch(pos, itemNum, index, batchData, batchLabel)
     end
 --    torch.setnumthreads(2)
     self.ExtractFunction(data, key, config, startIndex, batchData, batchLabel)
+
+    if(pos == itemNum) then
+        self.cursor:first()
+    end
 
 --    local t2 = sys.clock()
 --    tt1 = tt1 + (t2-t1)
